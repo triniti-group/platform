@@ -95,7 +95,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: http://platform.triniti.uz/
     runs-on: ubuntu-latest
     needs: check-and-build
     if: needs.check-and-build.outputs.changed == 'true'
