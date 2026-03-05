@@ -28,11 +28,11 @@ jobs:
       - name: Check Remote Repo Hash
         id: check_hash
         run: |
-          REMOTE_SHA=$(curl -s -H "Authorization: token ${{ secrets.MY_GITHUB_TOKEN }}" \
+          REMOTE_SHA=$(curl -s -H "Authorization: token ${{ secrets.PLATFORM_GITHUB_TOKEN }}" \
             https://api.github.com/repos/triniti-group/platformdev/commits/main | jq -r '.sha')
           
           if [ "$REMOTE_SHA" == "null" ] || [ -z "$REMOTE_SHA" ]; then
-            echo "Error: Could not fetch SHA. Check MY_GITHUB_TOKEN."
+            echo "Error: Could not fetch SHA. Check PLATFORM_GITHUB_TOKEN."
             exit 1
           fi
 
@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: triniti-group/platformdev
-          token: ${{ secrets.MY_GITHUB_TOKEN }}
+          token: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
           path: data-src
 
       - name: Setup Node
