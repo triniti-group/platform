@@ -1,0 +1,105 @@
+name: Watcher & Deploy to Pages
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: watcher-group
+  cancel-in-progress: true
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check_hash.outputs.changed }}
+    steps:
+      - name: Checkout Watcher (this repo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Remote Repo Hash
+        id: check_hash
+        run: |
+          REMOTE_SHA=$(curl -s -H "Authorization: token ${{ secrets.MY_GITHUB_TOKEN }}" \
+            https://api.github.com/repos/triniti-group/platformdev/commits/main | jq -r '.sha')
+          
+          if [ "$REMOTE_SHA" == "null" ] || [ -z "$REMOTE_SHA" ]; then
+            echo "Error: Could not fetch SHA. Check MY_GITHUB_TOKEN."
+            exit 1
+          fi
+
+          if [ -f last_sha.txt ] && [ "$(cat last_sha.txt)" == "$REMOTE_SHA" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "remote_sha=$REMOTE_SHA" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Save new SHA to repo
+        if: steps.check_hash.outputs.changed == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          
+          echo "${{ steps.check_hash.outputs.remote_sha }}" > last_sha.txt
+          
+          git add last_sha.txt
+          git commit -m "chore: update tracked SHA to ${{ steps.check_hash.outputs.remote_sha }}"
+          git push origin main
+
+      - name: Checkout Data Repo (Platform)
+        if: steps.check_hash.outputs.changed == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: triniti-group/platformdev
+          token: ${{ secrets.MY_GITHUB_TOKEN }}
+          path: data-src
+
+      - name: Setup Node
+        if: steps.check_hash.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        if: steps.check_hash.outputs.changed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install & Build
+        if: steps.check_hash.outputs.changed == 'true'
+        run: |
+          cd data-src
+          pnpm install --no-frozen-lockfile
+          pnpm build
+
+      - name: Upload artifact
+        if: steps.check_hash.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: data-src/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: check-and-build
+    if: needs.check-and-build.outputs.changed == 'true'
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
